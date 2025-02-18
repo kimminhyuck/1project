@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layouts/layout1}">
+<head>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+  <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
+  <style>
+    .root {
+      width: 100%;
+      max-width: 400px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .form {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 0 15px rgba(0,0,0,0.1);
+      transition: all 0.3s ease;
+    }
+
+    .form.active {
+      display: block;
+    }
+
+    .form.inactive {
+      display: none;
+    }
+
+    .form-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    h5 {
+      font-size: 24px;
+      margin: 0;
+      text-align: center;
+      color: #333;
+    }
+
+    .form-field {
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-size: 16px;
+      outline: none;
+      transition: border-color 0.3s;
+      width: 100%;
+    }
+
+    .form-field:focus {
+      border-color: #007bff;
+    }
+
+    .button {
+      padding: 12px;
+      border: none;
+      border-radius: 5px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background 0.3s;
+      width: 100%;
+      margin: 5px 0;
+    }
+
+    .button.primary {
+      background: #007bff;
+      color: white;
+    }
+
+    .button.primary:hover {
+      background: #0056b3;
+    }
+
+    .button.secondary {
+      background: #f8f9fa;
+      color: #333;
+      border: 1px solid #ddd;
+    }
+
+    .button.secondary:hover {
+      background: #e2e6ea;
+    }
+
+    .social-login {
+      margin-top: 20px;
+    }
+
+    .social-login a {
+      display: block;
+      width: 100%;
+      padding: 12px;
+      margin: 10px 0;
+      text-align: center;
+      border-radius: 5px;
+      color: white;
+      text-decoration: none;
+    }
+
+    .btn-google {
+      background: #dc3545;
+    }
+
+    .btn-kakao {
+      background: #ffc107;
+      color: #000 !important;
+    }
+
+    .btn-naver {
+      background: #28a745;
+    }
+
+    .view-options {
+      text-align: center;
+      margin-top: 20px;
+      color: #666;
+    }
+
+    .view-options a {
+      color: #007bff;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .view-options a:hover {
+      text-decoration: underline;
+    }
+
+    /* 알림 메시지 스타일 */
+    .alert-success {
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 5px;
+      color: #155724;
+      background-color: #d4edda;
+      border: 1px solid #c3e6cb;
+      text-align: center;
+    }
+
+    .alert-danger {
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 5px;
+      color: #721c24;
+      background-color: #f8d7da;
+      border: 1px solid #f5c6cb;
+      text-align: center;
+    }
+
+    /* 기존 .social-login 스타일을 아래 코드로 교체 */
+    .social-login {
+      margin: 20px 0;
+      text-align: center;
+    }
+
+    .social-text {
+      color: #666;
+      margin-bottom: 15px;
+    }
+
+    .social-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin-bottom: 20px 0;
+    }
+
+    .social-circle {
+      position: relative;  /* 추가 */
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: white;
+      border: 1px solid #eee;
+      overflow: hidden;   /* 추가 */
+      padding: 0;
+    }
+
+    .social-circle:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .social-circle img {
+      position: absolute;  /* 추가 */
+      top: 50%;           /* 추가 */
+      left: 50%;          /* 추가 */
+      transform: translate(-50%, -50%);  /* 추가 */
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+    }
+
+    .divider {
+      position: relative;
+      text-align: center;
+      margin: 15px 0;
+    }
+
+    .divider::before,
+    .divider::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      width: 45%;
+      height: 1px;
+      background-color: #eee;
+    }
+
+    .divider::before {
+      left: 0;
+    }
+
+    .divider::after {
+      right: 0;
+    }
+
+    .divider span {
+      background-color: white;
+      padding: 0 15px;
+      color: #888;
+      font-size: 13px;
+    }
+  </style>
+</head>
+
+<div layout:fragment="content">
+  <div class="root">
+    <!-- 로그인 폼 -->
+    <div class="signin-wrapper form active">
+      <div class="form-wrapper">
+        <h5>Welcome Back 👊</h5>
+        <!-- 메시지 영역 -->
+        <div th:if="${message}" class="alert-success">
+          <p th:text="${message}"></p>
+        </div>
+        <div th:if="${errorMessage}" class="alert-danger">
+          <p th:text="${errorMessage}"></p>
+        </div>
+        <div th:if="${loginErrorMsg}" class="alert-danger">
+          <p th:text="${loginErrorMsg}"></p>
+        </div>
+
+        <form th:action="@{/members/login/process}" method="post">
+          <input type="email" name="email" class="form-field" placeholder="이메일을 입력해주세요" required>
+          <input type="password" name="password" class="form-field" placeholder="비밀번호 입력" required>
+
+          <button type="submit" class="button primary">로그인</button>
+          <button type="button" class="button secondary" id="click-signup">회원가입</button>
+
+          <div class="social-login">
+            <div class="divider">
+              <span>또는</span>
+            </div>
+            <p class="social-text">소셜 로그인</p>
+            <div class="social-buttons">
+              <a href="/oauth2/authorization/google" class="social-circle google">
+                <img src="https://www.google.com/images/branding/googleg/1x/googleg_standard_color_128dp.png" alt="구글 로그인">
+              </a>
+              <a href="/oauth2/authorization/kakao" class="social-circle kakao">
+                <img src="https://developers.kakao.com/assets/img/about/logos/kakaotalksharing/kakaotalk_sharing_btn_medium.png" alt="카카오 로그인">
+              </a>
+              <a href="/oauth2/authorization/naver" class="social-circle naver">
+                <img src="https://static.nid.naver.com/oauth/button_g.PNG" alt="네이버 로그인">
+              </a>
+            </div>
+
+          </div>
+
+          <div class="view-options">
+            <p>
+              view concept for
+              <a id="mobile"><b>mobile</b></a>
+              or for
+              <a id="desk"><b>desktop</b></a>
+            </p>
+          </div>
+        </form>
+      </div>
+    </div>
+    <!-- 회원가입 폼 -->
+    <div class="signup-wrapper form inactive">
+      <div class="form-wrapper">
+        <h5>👋 Hello</h5>
+        <form th:action="@{/members/new}" method="post" th:object="${memberFormDto}">
+
+          <input type="text" th:field="*{name}" class="form-field" id="name" placeholder="이름을 입력해주세요" required>
+          <div th:if="${#fields.hasErrors('name')}" class="alert-danger">
+            <p th:errors="*{name}"></p>
+          </div>
+
+          <input type="email" th:field="*{email}" class="form-field" id="email" placeholder="이메일을 입력해주세요" required>
+          <button type="button" class="button secondary" onclick="checkEmail()">이메일 중복확인</button>
+          <div id="emailStatus"></div>
+          <div th:if="${#fields.hasErrors('email')}" class="alert-danger">
+            <p th:errors="*{email}"></p>
+          </div>
+
+          <input type="password" th:field="*{password}" class="form-field" id="password" placeholder="비밀번호 입력" required>
+          <input type="password" th:field="*{confirmPassword}" class="form-field" id="confirmPassword"
+                 placeholder="비밀번호를 다시 입력해주세요" required>
+          <div id="passwordMatch"></div>
+          <div th:if="${#fields.hasErrors('password')}" class="alert-danger">
+            <p th:errors="*{password}"></p>
+          </div>
+
+          <div class="address-wrapper">
+            <div class="zipcode-wrapper" style="display: flex; gap: 10px;">
+              <input type="text" th:field="*{zipcode}" class="form-field" id="zipcode"
+                     placeholder="우편번호" style="flex: 1;" readonly>
+              <button type="button" class="button secondary" onclick="execDaumPostcode()"
+                      style="width: auto;">주소 찾기</button>
+            </div>
+            <input type="text" th:field="*{address}" class="form-field" id="address"
+                   placeholder="주소" readonly>
+            <input type="text" th:field="*{addressDetail}" class="form-field" id="addressDetail"
+                   placeholder="상세주소">
+          </div>
+
+          <button type="submit" class="button primary">가입하기</button>
+          <button type="button" class="button secondary" id="click-signin">로그인으로 돌아가기</button>
+
+          <div class="view-options">
+            <p>
+              view concept for
+              <a id="mobile"><b>mobile</b></a>
+              or for
+              <a id="desk"><b>desktop</b></a>
+            </p>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script th:inline="javascript">
+    $(document).ready(function(){
+      // 메시지가 있을 경우 로그인 폼으로 전환
+      var message = [[${message}]];
+      var errorMessage = [[${errorMessage}]];
+      if(message || errorMessage) {
+        $(".signup-wrapper").removeClass("active").addClass("inactive");
+        $(".signin-wrapper").removeClass("inactive").addClass("active");
+      }
+
+      // 폼 전환
+      $("#click-signup").click(function() {
+        $(".signin-wrapper").removeClass("active").addClass("inactive");
+        $(".signup-wrapper").removeClass("inactive").addClass("active");
+      });
+
+      $("#click-signin").click(function() {
+        $(".signup-wrapper").removeClass("active").addClass("inactive");
+        $(".signin-wrapper").removeClass("inactive").addClass("active");
+      });
+
+      // mobile/desktop 뷰 전환
+      $("#mobile").click(function() {
+        $(".root").css("max-width", "100%");
+      });
+
+      $("#desk").click(function() {
+        $(".root").css("max-width", "400px");
+      });
+
+      // 비밀번호 확인
+      $("#password, #confirmPassword").on("input", function() {
+        var password = $("#password").val();
+        var confirmPassword = $("#confirmPassword").val();
+
+        if(confirmPassword) {
+          if(password === confirmPassword) {
+            $("#passwordMatch").html('<div class="alert-success"><p>비밀번호가 일치합니다</p></div>');
+          } else {
+            $("#passwordMatch").html('<div class="alert-danger"><p>비밀번호가 일치하지 않습니다</p></div>');
+          }
+        }
+      });
+
+      // 폼 제출 시 주소 조합
+      $('form').on('submit', function() {
+        var zipcode = $('#zipcode').val();
+        var address = $('#address').val();
+        var addressDetail = $('#addressDetail').val();
+
+        if(zipcode && address) {
+          var fullAddress = '[' + zipcode + '] ' + address;
+          if(addressDetail) {
+            fullAddress += ' ' + addressDetail;
+          }
+          $('#address').val(fullAddress);
+        }
+      });
+    });
+
+    // 이메일 중복 확인
+    function checkEmail() {
+      var email = $("#email").val();
+      if(!email) {
+        alert("이메일을 입력해주세요.");
+        return;
+      }
+
+      var emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if(!emailRegex.test(email)) {
+        alert("올바른 이메일 형식이 아닙니다.");
+        return;
+      }
+
+      $.ajax({
+        url: "/members/check-email",
+        type: "GET",
+        data: { email: email },
+        success: function(response) {
+          if(response.available) {
+            $("#emailStatus").html('<div class="alert-success"><p>사용 가능한 이메일입니다</p></div>');
+          } else {
+            $("#emailStatus").html('<div class="alert-danger"><p>이미 사용중인 이메일입니다</p></div>');
+          }
+        },
+        error: function() {
+          alert("이메일 중복 확인 중 오류가 발생했습니다.");
+        }
+      });
+    }
+
+    // 다음 주소 API
+    function execDaumPostcode() {
+      new daum.Postcode({
+        oncomplete: function(data) {
+          var zipcode = data.zonecode;
+          var addr = data.roadAddress;
+
+          document.getElementById('zipcode').value = zipcode;
+          document.getElementById('address').value = addr;
+
+          document.getElementById('addressDetail').focus();
+        }
+      }).open();
+    }
+  </script>
+</div>
+</html>

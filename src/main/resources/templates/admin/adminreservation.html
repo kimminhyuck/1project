@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="fragments/header :: header">
+  <title>adminreservation</title>
+</head>
+<body>
+<div class="container">
+  <div class="py-5 text-center">
+    <h2>adminreservation</h2>
+  </div>
+
+  <!-- 필터 영역 -->
+  <div class="row mb-3">
+    <div class="col">
+      <form th:action="@{/admin/reservations}" method="get" class="form-inline">
+        <div class="form-group mx-2">
+          <label for="date" class="mr-2">날짜</label>
+          <input type="date" id="date" name="date" class="form-control"
+                 th:value="${selectedDate}">
+        </div>
+        <div class="form-group mx-2">
+          <label for="status" class="mr-2">상태</label>
+          <select id="status" name="status" class="form-control">
+            <option value="">전체</option>
+            <option value="PENDING" th:selected="${selectedStatus == 'PENDING'}">대기중</option>
+            <option value="CONFIRMED" th:selected="${selectedStatus == 'CONFIRMED'}">승인</option>
+            <option value="CANCELLED" th:selected="${selectedStatus == 'CANCELLED'}">취소</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary">검색</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 예약 목록 테이블 -->
+  <table class="table">
+    <thead>
+    <tr>
+      <th>예약번호</th>
+      <th>예약자</th>
+      <th>연락처</th>
+      <th>예약일자</th>
+      <th>예약시간</th>
+      <th>상태</th>
+      <th>관리</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:each="reservation : ${reservations}">
+      <td th:text="${reservation.id}"></td>
+      <td th:text="${reservation.name}"></td>
+      <td th:text="${reservation.phone}"></td>
+      <td th:text="${reservation.date}"></td>
+      <td th:text="${reservation.time}"></td>
+      <td th:text="${reservation.status}"></td>
+      <td>
+        <a th:href="@{/admin/reservations/{id}(id=${reservation.id})}"
+           class="btn btn-sm btn-info">상세</a>
+        <button class="btn btn-sm btn-success"
+                th:if="${reservation.status == 'PENDING'}"
+                th:onclick="'updateStatus(' + ${reservation.id} + ', \'CONFIRMED\')'">
+          승인
+        </button>
+        <button class="btn btn-sm btn-danger"
+                th:if="${reservation.status == 'PENDING'}"
+                th:onclick="'updateStatus(' + ${reservation.id} + ', \'CANCELLED\')'">
+          거절
+        </button>
+      </td>
+    </tr>
+    </tbody>
+  </table>
+
+  <!-- 페이징 -->
+  <nav aria-label="Page navigation" th:if="${reservations.totalPages > 0}">
+    <ul class="pagination justify-content-center">
+      <li class="page-item" th:classappend="${!reservations.hasPrevious} ? 'disabled'">
+        <a class="page-link" th:href="@{/admin/reservations(page=${reservations.number - 1})}">이전</a>
+      </li>
+      <li class="page-item" th:each="pageNum : ${#numbers.sequence(0, reservations.totalPages - 1)}"
+          th:classappend="${pageNum == reservations.number} ? 'active'">
+        <a class="page-link" th:href="@{/admin/reservations(page=${pageNum})}" th:text="${pageNum + 1}"></a>
+      </li>
+      <li class="page-item" th:classappend="${!reservations.hasNext} ? 'disabled'">
+        <a class="page-link" th:href="@{/admin/reservations(page=${reservations.number + 1})}">다음</a>
+      </li>
+    </ul>
+  </nav>
+</div>
+
+<!-- JavaScript -->
+<script>
+  function updateStatus(id, status) {
+    if(!confirm('예약 상태를 변경하시겠습니까?')) return;
+
+    fetch(`/admin/reservations/${id}/status?status=${status}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    })
+            .then(response => {
+              if(response.ok) {
+                alert('상태가 변경되었습니다.');
+                location.reload();
+              } else {
+                alert('상태 변경에 실패했습니다.');
+              }
+            })
+            .catch(error => {
+              console.error('Error:', error);
+              alert('오류가 발생했습니다.');
+            });
+  }
+</script>
+</body>
+</html>

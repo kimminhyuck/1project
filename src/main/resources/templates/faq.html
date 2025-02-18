@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FAQ 관리</title>
+  <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+<h2>FAQ 관리</h2>
+<form id="faqForm">
+  <input type="text" id="question" placeholder="질문" required>
+  <input type="text" id="answer" placeholder="답변" required>
+  <button type="button" onclick="saveFaq()">저장</button>
+</form>
+
+<div id="faq-container"></div>
+
+<script>
+  // FAQ 불러오기
+  function loadFaqs() {
+    fetch('/api/faqs')
+            .then(res => res.json())
+            .then(data => {
+              const container = document.getElementById('faq-container');
+              container.innerHTML = '';
+              data.forEach(faq => {
+                container.innerHTML += `
+                            <div>
+                                <h3>${faq.question}</h3>
+                                <p>${faq.answer}</p>
+                                <button onclick="deleteFaq(${faq.id})">삭제</button>
+                                <button onclick="editFaq(${faq.id}, '${faq.question}', '${faq.answer}')">수정</button>
+                            </div>
+                        `;
+              });
+            });
+  }
+
+  // FAQ 추가
+  function saveFaq() {
+    const question = document.getElementById('question').value;
+    const answer = document.getElementById('answer').value;
+    fetch('/api/faqs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, answer })
+    }).then(() => {
+      loadFaqs();
+      document.getElementById('faqForm').reset();
+    });
+  }
+
+  // FAQ 수정
+  function editFaq(id, question, answer) {
+    document.getElementById('question').value = question;
+    document.getElementById('answer').value = answer;
+    document.querySelector('button').onclick = function () {
+      fetch(`/api/faqs/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: document.getElementById('question').value,
+          answer: document.getElementById('answer').value
+        })
+      }).then(() => {
+        loadFaqs();
+        document.getElementById('faqForm').reset();
+      });
+    };
+  }
+
+  // FAQ 삭제
+  function deleteFaq(id) {
+    fetch(`/api/faqs/${id}`, { method: 'DELETE' })
+            .then(() => loadFaqs());
+  }
+
+  // 초기 데이터 불러오기
+  loadFaqs();
+</script>
+</body>
+</html>

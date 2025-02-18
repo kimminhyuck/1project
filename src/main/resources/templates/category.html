@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layouts/layout1}">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <meta name="description" content="" />
+    <meta name="author" content="" />
+    <th:block th:if="${#authentication.principal != null}">
+        <meta name="_csrf" th:content="${_csrf.token}"/>
+        <meta name="_csrf_header" th:content="${_csrf.headerName}"/>
+    </th:block>
+    <title>Shop Homepage - Start Bootstrap Template</title>
+    <!-- Favicon-->
+    <link rel="icon" type="image/x-icon" href="assets/favicon.ico" />
+    <!-- Bootstrap icons-->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.5.0/font/bootstrap-icons.css" rel="stylesheet" />
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- JS, Popper.js, and jQuery-->
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</head>
+<th:block layout:fragment="css">
+    <style>
+
+        #pageNum .page-link.active {
+            background-color: #212529 !important;
+            border-color: #212529 !important;
+
+        }
+
+    </style>
+</th:block>
+
+<th:block layout:fragment="script">
+    <!-- JS, Popper.js, and jQuery-->
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <!-- Bootstrap core JS-->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script th:inline="javascript">
+        // 카테고리별 아이템 로딩 함수
+        const category = new URLSearchParams(window.location.search).get('category');
+
+// 페이지 로드 시 Ajax 요청
+$(document).ready(function() {
+    console.log("Category: " + category);  // category 값 확인
+    loadItems(category);  // Ajax 요청
+});
+
+
+// 상품 목록을 Ajax로 불러오는 함수
+function loadItems(category, page = 0, size = 12) {
+
+    // CSRF 토큰 가져오기 ==========================
+    var token = $("meta[name='_csrf']").attr("content");
+    var header = $("meta[name='_csrf_header']").attr("content");
+
+    $.ajax({
+        url: '/category/items/ajax',  // Ajax 요청을 /category/items로 수정
+        method: 'GET',
+        data: { category: category, page: page, size: size },  // 페이지 및 크기 정보도 전송
+
+        //========================================
+        beforeSend: function(xhr) {
+            // CSRF 토큰이 있을 경우 헤더에 설정
+            if (token && header) {
+                xhr.setRequestHeader(header, token);
+            }
+        },
+
+        success: function(response) {
+            //console.log("Response from server: ", response);  // TEST서버로부터 받은 전체 응답 확인===================
+            let itemsHtml = '';
+            if (response.content && response.content.length > 0) {  // 응답에 content가 있는지 확인
+                //console.log("상품목록:", response.content); //TEST====================
+                response.content.forEach(item => {
+                    //console.log("item.imgUrl: ", item.imgUrl); //TEST==============
+                    //console.log("item.averageStar: ", item.averageStar); //TEST==============
+                    //console.log("item object: ", item); //TEST==============
+                    //console.log("============item Id: ", item.id); //TEST==============
+                    // 별점 처리
+                    let starsHtml = '';
+                    for (let i = 1; i <= 5; i++) {
+                        if (i <= item.averageStar) {
+                            starsHtml += '<div class="bi-star-fill"></div>';
+                        } else {
+                            starsHtml += '<div class="bi-star"></div>';
+                        }
+                    }
+
+                    // 각 상품에 대한 HTML 구성
+
+                    itemsHtml += `
+                        <div class="col-6 col-md-4 col-lg-3 mb-5 justify-content-center">
+                            <div class="card h-100">
+                                <a href="/item/${item.id}" class="text-dark">
+                                    <img src="${item.imgUrl || '/images/default.png'}" class="card-img-top" alt="${item.itemNm}">
+                                    <div class="card-body p-4">
+                                        <h5 class="fw-bolder">${item.itemNm}</h5>
+                                        <div class="d-flex justify-content-center small text-warning mb-2">
+                                            <!-- 별점 HTML 삽입 -->
+                                            ${generateStars(item.averageStar)}
+                                        </div>
+                                        <p class="text-center">${item.itemDetail}</p>
+                                        <p class="text-center">${item.price}원</p>
+                                    </div>
+                                    <div class="card-footer p-4 pt-0 border-top-0 bg-transparent">
+                                        <div class="text-center">
+                                            <button class="btn btn-outline-dark mt-auto" type="button" onclick="addCart(${item.id})">Add to cart</button>
+                                        </div>
+                                    </div>
+                                </a>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                $('#item-list').html(itemsHtml);  // 상품 목록을 페이지에 삽입
+                createPagination(response);  // 페이지네이션 처리
+            } else {
+                //console.error("No content found in response.");//에러로그 주석
+            }
+        },
+        error: function(err) {
+            //console.error("Error loading items:", err);//에러로그 주석
+        }
+    });
+}
+
+// 페이지네이션을 위한 함수
+function createPagination(response) {
+    const totalPages = response.totalPages;
+    let paginationHtml = '';
+
+    for (let i = 0; i < totalPages; i++) {
+        paginationHtml += `<button class="page-link" onclick="loadItems('${category}', ${i})">${i + 1}</button>`;
+    }
+
+    $('#pagination').html(paginationHtml);  // 페이지네이션 표시
+}
+
+    // 별점 생성 함수
+    function generateStars(averageStar) {
+        let starsHtml = '';
+        for (let i = 1; i <= 5; i++) {
+            if (i <= averageStar) {
+                starsHtml += '<div class="bi-star-fill"></div>';
+            } else {
+                starsHtml += '<div class="bi-star"></div>';
+            }
+        }
+        return starsHtml;
+    }
+
+            function addCart(){
+                    var token = $("meta[name='_csrf']").attr("content");
+                    var header = $("meta[name='_csrf_header']").attr("content");
+
+                    var count = $("#count").val() || 1;//
+
+                    var url = "/cart";
+                    var paramData = {
+                        itemId : itemId,
+                        count : parseInt(count, 10)
+                    };
+                    console.log("전송 데이터: ", paramData); //TEST 데이터 확인용 로그
+
+                    var param = JSON.stringify(paramData);
+
+                    $.ajax({
+                        url      : url,
+                        type     : "POST",
+                        contentType : "application/json",
+                        data     : param,
+                        beforeSend : function(xhr){
+                            /* 데이터를 전송하기 전에 헤더에 csrf값을 설정 */
+                            //xhr.setRequestHeader(header, token);
+
+                            //==============================
+                            if (token && header) {
+                                xhr.setRequestHeader(header, token);  // CSRF 토큰을 헤더에 추가
+                            }
+                        },
+                        dataType : "json",
+                        cache   : false,
+                        success  : function(result, status){
+                            alert("상품을 장바구니에 담았습니다.");
+                            location.href='/';
+                        },
+                        error : function(jqXHR, status, error){
+                            console.error("에러 상태: ", jqXHR.status); //TEST
+                            console.error("에러 응답: ", jqXHR.responseText); //TEST
+                            if(jqXHR.status == '401'){
+                                alert('로그인 후 이용해주세요');
+                                location.href='/members/login';
+                            } else{
+                                alert(jqXHR.responseText);
+                            }
+
+                        }
+                    });
+            }
+    </script>
+</th:block>
+
+<body>
+<div layout:fragment="content">
+    <!-- Header-->
+    <div class="bg-dark py-5">
+        <div class="container px-4 px-lg-5 my-5">
+            <div class="text-center text-white">
+                <h1 class="display-4 fw-bolder" th:text="${category}"></h1>
+            </div>
+        </div>
+    </div>
+    <!-- Section-->
+    <section class="py-5">
+        <div class="container px-4 px-lg-5 mt-5">
+            <!-- 아이템 리스트 출력 영역 -->
+            <div id="item-list" class="row gx-4 gx-lg-5">
+                <!-- Ajax로 불러온 아이템들이 동적으로 출력되는 영역 -->
+            </div>
+
+            <br>
+            <!-- 추가되는 페이지네이션 영역 -->
+            <div>
+                <ul id="pagination" class="pagination justify-content-center">
+                    <!-- 페이지네이션 링크들이 여기에 삽입됩니다 -->
+                </ul>
+            </div>
+        </div>
+    </section>
+</div>
+</body>
+</html>

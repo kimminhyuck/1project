@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layouts/layout1}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/assets/favicon.ico" type="image/x-icon">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <meta name="_csrf" th:content="${_csrf.token}"/>
+    <meta name="_csrf_header" th:content="${_csrf.headerName}"/>
+    <script type="text/javascript" src="https://cdn.iamport.kr/v1/iamport.js"></script>
+    <style>
+        /* 모든 브라우저 공통적으로 스핀버튼 제거 */
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        /* Firefox */
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+
+        .quantity-input {
+            width: 60px;
+            text-align: center;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            height: 35px; /* 조금 더 compact하게 */
+        }
+
+        .cart-wrapper {
+            background-color: #f8f9fa;
+            min-height: 100vh;
+            padding: 40px 0;
+        }
+
+        .product-card {
+            background: white;
+            border-radius: 12px;
+            transition: transform 0.2s;
+        }
+
+        .product-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .product-image {
+            width: 100px;
+            height: 100px;
+            object-fit: cover;
+            border-radius: 8px;
+        }
+
+        .summary-card {
+            background: white;
+            border-radius: 12px;
+            position: sticky;
+            top: 20px;
+        }
+
+        .checkout-btn {
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+            border: none;
+            transition: transform 0.2s;
+        }
+
+        .checkout-btn:hover {
+            transform: translateY(-2px);
+            background: linear-gradient(135deg, #4f46e5, #4338ca);
+        }
+
+        .remove-btn {
+            color: #dc2626;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .remove-btn:hover {
+            color: #991b1b;
+        }
+
+        .quantity-btn {
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            background: #f3f4f6;
+            border: none;
+            transition: all 0.2s;
+        }
+
+        .quantity-btn:hover {
+            background: #e5e7eb;
+        }
+
+        .item-row {
+            display: flex;
+            align-items: center;
+        }
+
+        /* 이미지와 체크박스를 같은 라인에 수직 중앙 정렬 */
+        .item-with-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+    </style>
+</head>
+
+<th:block layout:fragment="script">
+    <script src="https://code.jquery.com/jquery-3.5.1.js"></script>
+    <script>
+        let discountedTotalPrice = 0;
+
+        $(document).ready(function () {
+            fetchAvailableMileage();
+            calculateFinalPrice();
+
+            // 페이지 로드 시 마일리지, 쿠폰 초기화
+            resetMileage(false);
+            resetCoupon(false);
+            sessionStorage.removeItem("mileageApplied");
+            sessionStorage.removeItem("couponApplied");
+            calculateFinalPrice();
+        });
+
+        function setupAjax() {
+            const token = $("meta[name='_csrf']").attr("content");
+            const header = $("meta[name='_csrf_header']").attr("content");
+            return { token, header };
+        }
+
+        /** 주문 정보 수집 (체크된 상품) */
+        function collectCartItems() {
+            const cartItems = [];
+            $("input[name=cartChkBox]:checked").each(function () {
+                const cartItemId = $(this).val();
+                const count = $("#count_" + cartItemId).val();
+                cartItems.push({
+                    itemId: cartItemId,
+                    count: count
+                });
+            });
+
+            if (!cartItems.length) {
+                alert("주문할 상품을 선택해주세요.");
+                return null;
+            }
+            return cartItems;
+        }
+
+        /** 총 금액 계산 */
+        function getOrderTotalPrice() {
+            let orderTotalPrice = 0;
+            $("input[name=cartChkBox]:checked").each(function () {
+                const cartItemId = $(this).val();
+                const price = parseFloat($("#price_" + cartItemId).data("price")) || 0;
+                const count = parseInt($("#count_" + cartItemId).val()) || 1;
+                let itemTotal = price * count;
+                itemTotal = Math.max(itemTotal, 1);
+                $("#totalPrice_" + cartItemId).text(itemTotal + "원");
+                orderTotalPrice += itemTotal;
+            });
+
+            if ($("input[name=cartChkBox]:checked").length === 0) {
+                orderTotalPrice = 0;
+            }
+
+            $("#orderTotalPrice").text(`${orderTotalPrice}원`);
+            return orderTotalPrice;
+        }
+
+        /** 최종 결제 금액 계산 */
+        function calculateFinalPrice() {
+            let orderTotalPrice = getOrderTotalPrice();
+
+            if (orderTotalPrice === 0) {
+                $("#orderTotalPrice").text("0원");
+                updateSummarySelectedItems();
+                return 0;
+            }
+
+            const mileageUsed = parseInt($("#previousMileageUsed").val()) || 0;
+            orderTotalPrice -= mileageUsed;
+
+            const discount = parseInt($("#discount").val()) || 0;
+            orderTotalPrice -= discount;
+
+            if (orderTotalPrice < 1) {
+                orderTotalPrice = 1;
+            }
+
+            $("#orderTotalPrice").text(orderTotalPrice + "원");
+            updateSummarySelectedItems();
+            return orderTotalPrice;
+        }
+
+        /** 수량 변경 처리 */
+        function changeCount(obj) {
+            const count = parseInt(obj.value) || 1;
+            const cartItemId = $(obj).attr("id").split('_')[1];
+            const price = parseFloat($("#price_" + cartItemId).data("price")) || 0;
+            let totalPrice = price * count;
+            totalPrice = Math.max(totalPrice, 1);
+
+            $("#totalPrice_" + cartItemId).text(totalPrice + "원");
+            getOrderTotalPrice();
+            updateCartItemCount(cartItemId, count);
+
+            const mileageInput = $("#mileageToUse").val().trim();
+            const couponInput = $("#couponCode").val().trim();
+
+            if (mileageInput || couponInput) {
+                resetMileage(false);
+                resetCoupon(false);
+                alert("상품 수량 변경으로 인해 쿠폰 및 마일리지가 초기화되었습니다.");
+            }
+
+            calculateFinalPrice();
+        }
+
+        /** 선택된 상품 요약 업데이트 */
+        function updateSummarySelectedItems() {
+            const summaryList = $("#summaryItemList");
+            summaryList.empty();
+
+            $("input[name=cartChkBox]:checked").each(function () {
+                const cartItemId = $(this).val();
+                const itemName = $("#name_" + cartItemId).text();
+                const count = parseInt($("#count_" + cartItemId).val()) || 1;
+                const price = parseFloat($("#price_" + cartItemId).data("price")) || 0;
+                const itemTotal = Math.max(price * count, 1);
+
+                const summaryItem = $("<div class='d-flex justify-content-between mb-1'></div>");
+                summaryItem.append(`<span>${itemName}</span>`);
+                summaryItem.append(`<span>${itemTotal}원</span>`);
+
+                summaryList.append(summaryItem);
+            });
+        }
+
+        /** 장바구니 수량 업데이트 */
+        function updateCartItemCount(cartItemId, count) {
+            const { token, header } = setupAjax();
+            $.ajax({
+                url: `/cartItem/${cartItemId}?count=${count}`,
+                type: "PATCH",
+                beforeSend: function (xhr) {
+                    xhr.setRequestHeader(header, token);
+                },
+                success: function () {},
+                error: handleAjaxError
+            });
+        }
+
+        /** 쿠폰 적용 */
+        function applyCoupon() {
+            const couponCode = $("#couponCode").val().trim();
+            const mileageApplied = sessionStorage.getItem("mileageApplied") === "true";
+            const { token, header } = setupAjax();
+
+            const cartItems = collectCartItems();
+            if (!cartItems) return;
+
+            if (!couponCode) {
+                alert("쿠폰 코드를 입력해주세요.");
+                return;
+            }
+
+            if (mileageApplied) {
+                alert("마일리지가 이미 적용된 상태에서는 쿠폰을 먼저사용해주세요.");
+                resetMileage(false);
+                calculateFinalPrice();
+                return;
+            }
+
+            const orderTotalPrice = parseFloat(getOrderTotalPrice()) || 0;
+
+            $.ajax({
+                url: "/apply",
+                type: "POST",
+                contentType: "application/json",
+                data: JSON.stringify({
+                    couponCode: couponCode,
+                    originalPrice: orderTotalPrice
+                }),
+                beforeSend: function (xhr) {
+                    xhr.setRequestHeader(header, token);
+                },
+                success: function (response) {
+                    if (response === "없는 쿠폰입니다. 다시 시도해주세요.") {
+                        alert(response);
+                        $("#couponCode").val("");
+                        return;
+                    }
+
+                    let discount = parseFloat(response.discount) || 0;
+
+                    if (discount >= orderTotalPrice) {
+                        discount = orderTotalPrice - 1;
+                        alert("쿠폰 적용 후 최소 결제 금액은 1원입니다.");
+                    }
+
+                    $("#discount").val(discount);
+                    calculateFinalPrice();
+
+                    alert(`쿠폰 적용 완료! 할인 금액: ${discount}원`);
+                    $("#couponCode").prop("disabled", true);
+                    $("#applyCouponButton").text("쿠폰 재등록").attr("onclick", "resetCoupon()");
+                    sessionStorage.setItem("couponApplied", "true");
+                },
+                error: function (xhr) {
+                    alert(xhr.responseJSON?.message || "쿠폰 적용 중 오류가 발생했습니다.");
+                }
+            });
+        }
+
+        /** 마일리지 적용 */
+        function applyMileage() {
+            const mileageToUseInput = $("#mileageToUse");
+            if (!mileageToUseInput || mileageToUseInput.length === 0) {
+                console.warn("마일리지 입력필드가 없습니다.");
+                return;
+            }
+
+            const cartItems = collectCartItems();
+            if (!cartItems) return;
+
+            let mileageToUse = mileageToUseInput.val().trim();
+            const originalAvailableMileage = parseInt($("#availableMileage").data("original")) || 0;
+            const totalPrice = getOrderTotalPrice();
+
+            sessionStorage.setItem("mileageApplied", "true");
+
+            const maxUsableMileage = Math.min(originalAvailableMileage, totalPrice - 1);
+
+            if (!mileageToUse) {
+                alert("사용할 마일리지를 입력해주세요.");
+                mileageToUseInput.val("");
+                return;
+            }
+
+            if (!/^\d+$/.test(mileageToUse)) {
+                alert("사용할 마일리지는 숫자만 입력할 수 있습니다.");
+                mileageToUseInput.val("");
+                return;
+            }
+
+            mileageToUse = parseInt(mileageToUse);
+
+            if (mileageToUse <= 0) {
+                alert("사용할 마일리지를 입력해주세요.");
+                mileageToUseInput.val("");
+                return;
+            }
+
+            if (mileageToUse > originalAvailableMileage) {
+                alert("마일리지가 부족합니다.");
+                mileageToUseInput.val(originalAvailableMileage);
+                return;
+            }
+
+            if (mileageToUse > maxUsableMileage) {
+                alert(`마일리지는 상품 가격을 초과할 수 없습니다. 최대 ${maxUsableMileage}원`);
+                mileageToUse = maxUsableMileage;
+                mileageToUseInput.val(mileageToUse);
+            }
+
+            const remainingMileage = originalAvailableMileage - mileageToUse;
+            $("#availableMileage").text(remainingMileage);
+            $("#previousMileageUsed").val(mileageToUse);
+            mileageToUseInput.prop("disabled", true);
+
+            $("#applyMileageButton").text("마일리지 재설정").attr("onclick", "resetMileage()");
+            calculateFinalPrice();
+
+            alert(`마일리지 ${mileageToUse}원이 사용되었습니다.`);
+        }
+
+        /** 쿠폰 초기화 */
+        function resetCoupon(showAlert = true) {
+            resetMileage(false);
+            $("#discount").val(0);
+            discountedTotalPrice = 0;
+            $("#couponCode").val("").prop("disabled", false);
+            $("#applyCouponButton").text("쿠폰 사용").attr("onclick", "applyCoupon()");
+            sessionStorage.removeItem("couponApplied");
+            calculateFinalPrice();
+        }
+
+        /** 마일리지 초기화 */
+        function resetMileage() {
+            const originalAvailableMileage = parseInt($("#availableMileage").data("original")) || 0;
+            $("#mileageToUse").val("").prop("disabled", false);
+            $("#applyMileageButton").text("마일리지 사용").attr("onclick", "applyMileage()");
+            $("#availableMileage").text(originalAvailableMileage);
+            $("#previousMileageUsed").val(0);
+            sessionStorage.removeItem("mileageApplied");
+            calculateFinalPrice();
+        }
+
+        /** 주문 처리 */
+        function handleOrder() {
+            const cartItems = collectCartItems();  // 선택된 장바구니 아이템을 가져옵니다.
+
+            if (!cartItems) {
+                return;  // 선택된 아이템이 없으면 함수 종료
+            }
+
+            const itemNames = cartItems.map(item => $("#name_" + item.itemId).text());  // 선택된 상품명들
+            let productName = itemNames[0] || "상품 없음";  // 상품명이 없으면 "상품 없음"
+            if (itemNames.length > 1) productName += ` 외 ${itemNames.length - 1}개`;  // 여러 개의 상품이 선택되었을 경우
+
+            // calculateFinalPrice()를 호출하여 마일리지 적용 후 금액을 계산
+            let amountToPay = calculateFinalPrice();  // 마일리지 적용 후 최종 결제 금액
+            amountToPay = Math.max(amountToPay, 1);  // 최소 결제 금액 1원
+
+            // 1. 결제 처리 (결제 요청)
+            requestPay(productName, amountToPay, function (paymentSuccess) {
+                if (paymentSuccess) {
+                    // 결제 성공 후 마일리지 사용 및 적립 처리 API 호출
+                    const mileageUsed = parseInt($("#previousMileageUsed").val()) || 0;  // 사용된 마일리지
+                    const orderData = {
+                        purchaseAmount: amountToPay,   // 최종 결제 금액
+                        mileageUsed: mileageUsed // 사용된 마일리지
+                    };
+
+                    $.ajax({
+                        url: "/api/mileage/process-order",  // 서버에서 결제 처리
+                        type: "POST",
+                        contentType: "application/json",
+                        data: JSON.stringify(orderData),  // 사용된 마일리지와 결제 금액 전달
+                        beforeSend: function (xhr) {
+                            const token = $("meta[name='_csrf']").attr("content");  // CSRF 토큰 가져오기
+                            const header = $("meta[name='_csrf_header']").attr("content");  // CSRF 헤더 가져오기
+                            xhr.setRequestHeader(header, token);  // CSRF 토큰을 요청 헤더에 추가
+                        },
+                        success: function (response) {
+                            // console.log("Order processed successfully.");
+                            alert("주문이 완료되었습니다.");
+                            window.location.href = '/orders';  // 예시로 주문 내역 페이지로 이동
+                        },
+                        error: function (error) {
+                            console.log("Error processing order:", error);
+                            alert("주문 처리 중 오류가 발생했습니다.");
+                        }
+                    });
+                } else {
+                    alert("결제 취소되었습니다.");
+                }
+            });
+        }/** 결제 처리 */
+        function requestPay(productName, amountToPay, callback) {
+
+            const userInfo = {
+                name: '[[${member.name}]]',
+                email: '[[${member.email}]]',
+                addr: '[[${member.address}]]'
+            };
+
+            const buyerName = userInfo.name.replace(/[^a-zA-Z0-9가-힣\s]/g, '');
+            const buyerEmail = userInfo.email.replace(/[^a-zA-Z0-9@._+-]/g, '');
+            const buyerAddr = userInfo.addr.replace(/[^a-zA-Z0-9가-힣\s]/g, '');
+            // console.log("Buyer Address:", buyerAddr);
+
+            const IMP = window.IMP;
+            IMP.init("imp07018502");  // IAMPORT 초기화
+
+            IMP.request_pay({
+                channelKey: "channel-key-55bfe3cc-6996-46c1-94a5-7bbb1611709b",
+                pay_method: "card",
+                merchant_uid: `order_${new Date().getTime()}`,
+                name: productName,
+                amount: amountToPay,  // 최종 결제 금액 (calculateFinalPrice에서 계산된 금액 사용)
+                buyer_email: buyerEmail,
+                buyer_name: buyerName,
+                buyer_tel: "01012345678",
+                buyer_addr: buyerAddr
+                // buyer_postcode: "123-456" //우편번호
+            }, function (rsp) {
+                if (rsp.success) {
+                    order(amountToPay);  // 결제 성공 시 주문 처리
+                    // console.log("Payment succeeded:", rsp);
+                    callback(true);  // 결제 성공 시 콜백 호출
+                } else {
+                    // console.log("Payment failed:", rsp.error_msg);
+                    callback(false);  // 결제 실패 시 콜백 호출
+                }
+            });
+        }
+
+
+        /** AJAX 에러 처리 */
+        function handleAjaxError(jqXHR) {
+            if (jqXHR.status === 401) {
+                alert("로그인이 필요합니다!");
+                location.href = "/members/login";
+            } else {
+                alert(jqXHR.responseJSON?.message || "오류가 발생했습니다.");
+            }
+        }
+
+        /** 마일리지 잔액 가져오기 */
+        function fetchAvailableMileage() {
+            $.ajax({
+                url: "/api/mileage/summary",
+                type: "GET",
+                success: function (data) {
+                    const totalMileage = data.totalMileage || 0;
+                    $("#availableMileage").text(totalMileage);
+                    $("#availableMileage").data("original", totalMileage);
+                },
+                error: function (xhr) {
+                    console.error("Failed to fetch mileage:", xhr.responseText);
+                }
+            });
+        }
+
+        /** 장바구니 아이템 삭제 */
+        function deleteCartItem(obj) {
+            const cartItemId = obj.dataset.id;
+            const { token, header } = setupAjax();
+
+            $.ajax({
+                url: "/cartItem/" + cartItemId,
+                type: "DELETE",
+                beforeSend: function (xhr) {
+                    xhr.setRequestHeader(header, token);
+                },
+                dataType: "json",
+                cache: false,
+                success: function (result, status) {
+                    location.href = '/cart';
+                },
+                error: function (jqXHR, status, error) {
+                    if (jqXHR.status == '401') {
+                        alert('로그인 후 이용해주세요');
+                        location.href = '/members/login';
+                    } else {
+                        alert(jqXHR.responseText);
+                    }
+                }
+            });
+        }
+
+        /** 수량 변경 버튼 로직 */
+        function updateQuantity(button, change) {
+            const cartItemId = button.getAttribute("data-id");
+            const inputField = document.getElementById(`count_${cartItemId}`);
+
+            let currentValue = parseInt(inputField.value) || 0;
+            const newValue = currentValue + change;
+
+            if (newValue >= 1) {
+                inputField.value = newValue;
+                changeCount(inputField);
+            }
+        }
+
+        // 주문 요청
+        function order() {
+            var token = $("meta[name='_csrf']").attr("content");
+            var header = $("meta[name='_csrf_header']").attr("content");
+
+            // 장바구니 아이템들 정보를 배열로 수집
+            var cartItems = [];
+            $("input[name=cartChkBox]:checked").each(function () {
+                var cartItemId = $(this).val();
+                var count = $("#count_" + cartItemId).val();
+                var totalAmount = $("#totalPrice_" + cartItemId).text().replace('원', '').trim();
+
+                cartItems.push({
+                    cartItemId: cartItemId,  // 상품 ID
+                    count: count,            // 수량
+                    totalAmount: totalAmount // 총 금액
+                });
+            });
+
+            // 장바구니에 선택된 아이템이 없으면 에러 처리
+            if (cartItems.length === 0) {
+                alert("주문할 상품을 선택해주세요.");
+                return;
+            }
+
+            var url = "/cart/orders";  // 주문 처리 URL
+            var paramData = {
+                cartOrderDtoList: cartItems,
+                usedMileage: $("#previousMileageUsed").val() // 마일리지 차감액 추가
+            };
+
+            var param = JSON.stringify(paramData);
+
+            // console.log(param);  // 전송되는 데이터 확인
+
+            // AJAX 요청 보내기
+            $.ajax({
+                url: url,
+                type: "POST",
+                contentType: "application/json",
+                data: param,
+                beforeSend: function (xhr) {
+                    xhr.setRequestHeader(header, token);  // CSRF 토큰 헤더에 추가
+                },
+                dataType: "json",
+                cache: false,
+                success: function (result, status) {
+                    // 주문 완료 후 주문 목록 페이지로 이동
+                    alert("주문이 완료되었습니다.");
+                    location.href = '/orders';  // 주문 완료 후 주문 목록 페이지로 이동
+                },
+                error: function (jqXHR, status, error) {
+                    if (jqXHR.status == '401') {
+                        alert('로그인 후 이용해주세요');
+                        location.href = '/members/login';  // 로그인 페이지로 이동
+                    } else {
+                        alert("오류 발생: " + (jqXHR.responseJSON ? jqXHR.responseJSON.message : error));  // 오류 메시지 출력
+                    }
+                }
+            });
+        }
+
+
+        /** 전체 선택/해제 */
+        function checkAll() {
+            const isChecked = $("#checkall").prop("checked");
+            $("input[name=cartChkBox]").prop("checked", isChecked);
+
+            const mileageApplied = sessionStorage.getItem("mileageApplied") === "true";
+            const couponApplied = sessionStorage.getItem("couponApplied") === "true";
+
+            if (mileageApplied || couponApplied) {
+                resetMileage(false);
+                resetCoupon(false);
+                alert("상품 선택이 변경되어 마일리지와 쿠폰이 초기화되었습니다.");
+            }
+            calculateFinalPrice();
+        }
+
+        $(document).on("change", "input[name=cartChkBox]", function () {
+            const mileageApplied = sessionStorage.getItem("mileageApplied") === "true";
+            const couponApplied = sessionStorage.getItem("couponApplied") === "true";
+
+            if (mileageApplied || couponApplied) {
+                resetMileage(false);
+                resetCoupon(false);
+                alert("상품 선택이 변경되어 마일리지와 쿠폰이 초기화되었습니다.");
+            }
+
+            const allChecked = $("input[name=cartChkBox]").length === $("input[name=cartChkBox]:checked").length;
+            $("#checkall").prop("checked", allChecked);
+
+            calculateFinalPrice();
+        });
+    </script>
+</th:block>
+
+<div layout:fragment="content" class="content-mg">
+    <div class="cart-wrapper">
+        <div class="container">
+            <div class="row g-4">
+                <!-- Cart Items Section -->
+                <div class="col-lg-8">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <div class="mt-3">
+                            <h4 class="mb-0">장바구니</h4>
+                            <input type="checkbox" id="checkall" onclick="checkAll()"> 전체선택
+                        </div>
+                        <span class="text-muted" th:text="${cartItems.size()} + ' items'">items</span>
+                    </div>
+                    <div th:each="cartItem : ${cartItems}" class="product-card p-3 shadow-sm mb-3">
+                        <div class="row align-items-center">
+                            <div class="col-md-6 d-flex align-items-center">
+                                <input type="checkbox" name="cartChkBox" th:value="${cartItem.cartItemId}" class="me-2">
+                                <img th:src="${cartItem.imgUrl}" class="product-image me-3" th:alt="${cartItem.itemNm}">
+                                <div>
+                                    <h6 class="mb-1" th:id="'name_' + ${cartItem.cartItemId}" th:text="${cartItem.itemNm}">상품명</h6>
+                                    <p class="text-muted mb-0"
+                                       th:id="'price_' + ${cartItem.cartItemId}"
+                                       th:data-price="${cartItem.price}"
+                                       th:text="${cartItem.price} + '원'">0원</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3 d-flex">
+                                <button class="quantity-btn" th:attr="data-id=${cartItem.cartItemId}" onclick="updateQuantity(this, -1)">-</button>
+                                <input type="number" class="form-control quantity-input text-center mx-1"
+                                       th:id="'count_' + ${cartItem.cartItemId}"
+                                       th:value="${cartItem.count}" min="1"
+                                       onchange="changeCount(this)">
+                                <button class="quantity-btn" th:attr="data-id=${cartItem.cartItemId}" onclick="updateQuantity(this, 1)">+</button>
+                            </div>
+                            <div class="col-md-2 text-end">
+                                <span th:id="'totalPrice_' + ${cartItem.cartItemId}"
+                                      th:text="${cartItem.price * cartItem.count} + '원'">0원</span>
+                            </div>
+                            <div class="col-md-1 text-end">
+                                <button type="button" class="btn btn-link remove-btn" th:data-id="${cartItem.cartItemId}" onclick="deleteCartItem(this)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Order Summary Section -->
+                <div class="col-lg-4">
+                    <div class="summary-card p-4 shadow-sm">
+                        <h5 class="mb-4">주문 요약</h5>
+                        <h5>마일리지 잔액: <span id="availableMileage" data-original="0">0</span>원</h5>
+
+                        <!-- 선택된 상품 리스트 표시 영역 -->
+                        <div id="summaryItemList" class="mb-3"></div>
+
+                        <div class="d-flex justify-content-between mb-3">
+                            <span>상품 총합</span>
+                            <span id="orderTotalPrice" th:text="${cartTotal} + '원'">0원</span>
+                        </div>
+                        <hr>
+                        <input type="hidden" id="discount" value="0">
+                        <input type="hidden" id="previousMileageUsed" value="0">
+
+                        <div class="mb-4">
+                            <div class="input-group mb-3">
+                                <input type="text" id="couponCode" class="form-control" placeholder="쿠폰 코드 입력">
+                                <button id="applyCouponButton" class="btn btn-outline-dark" onclick="applyCoupon()">쿠폰 사용</button>
+                            </div>
+                            <div class="input-group">
+                                <input type="text" id="mileageToUse" class="form-control" placeholder="사용할 마일리지 입력">
+                                <button id="applyMileageButton" class="btn btn-outline-dark" onclick="applyMileage()">마일리지 사용</button>
+                            </div>
+                        </div>
+                        <button class="btn btn-outline-dark w-100" onclick="handleOrder()">주문하기</button>
+                        <div class="text-center mt-3">
+                            <small class="text-muted">
+                                <i class="bi bi-shield-check text-success"></i> 안전한 결제
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</html>
