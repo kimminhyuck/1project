@@ -107,24 +107,7 @@ public class MileageService {
             }
         }
     }
-
-    // 마일리지 요약 조회
-//    @Transactional
-//    public MileageSummaryDTO getMileageSummary(Long memberId) {
-//        Member member = memberRepository.findById(memberId)
-//                .orElseThrow(() -> new RuntimeException("Member not found"));
-//
-//        MileageSummary summary = mileageSummaryRepository.findByMember(member)
-//                .orElseThrow(() -> new RuntimeException("Mileage summary not found"));
-//
-//        return new MileageSummaryDTO(
-//                summary.getTotalMileage(),
-//                summary.getTotalEarned(),
-//                summary.getTotalUsed(),
-//                summary.getLastUpdated()
-//        );
-//    }
-
+    
     @Transactional
     public MileageSummaryDTO getMileageSummary(Long memberId) {
         // 회원 정보 조회
