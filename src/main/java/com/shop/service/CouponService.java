@@ -48,12 +48,6 @@ public class CouponService {
     }
 
     // 쿠폰 조회
-//    public Coupon findCouponByCode(String couponCode) {
-//        return couponRepository.findById(couponCode)
-//                .orElseThrow(() -> new EntityNotFoundException("쿠폰이 존재하지 않습니다: " + couponCode));
-//    }
-
-    // 쿠폰 조회
     public Coupon findCouponByCode(String couponCode) {
         return couponRepository.findById(couponCode)
                 .orElseThrow(() -> new IllegalArgumentException("쿠폰이 존재하지 않습니다."));
